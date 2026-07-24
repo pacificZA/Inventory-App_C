@@ -18,6 +18,40 @@ char *file = NULL;
 char *params = NULL;
 cJSON *data = NULL;
 
+// ajoute un item a l'inventaire actuel
+void add_item(char *item, char *tags, float count) {
+
+    if (!item) {
+        printf("Error: Invalid item data. Please provide 3 parameters: name,tags,quantity).\n");
+        return;
+    }
+    
+    int nb = cJSON_GetArraySize(data);
+
+    for (int i=0; i < nb; i++) {
+        cJSON *obj = cJSON_GetArrayItem(data, i);
+        cJSON *name = cJSON_GetObjectItem(obj, "name");
+
+        if (strcmp(name->valuestring, item) == 0) {
+            printf("Error: Item that name already exists.\n");
+            return;
+        }
+    }
+
+    if (count < 0) {
+        printf("Error: Invalid quantity: %g. Can't put negative quantity.\n", count);
+        return;
+    }
+
+    cJSON *obj = cJSON_CreateObject();
+    cJSON_AddStringToObject(obj, "name", item);
+    cJSON_AddStringToObject(obj, "tags", tags);
+    cJSON_AddNumberToObject(obj, "quantity", count);
+    cJSON_AddItemToArray(data, obj);
+
+    update(file);
+}
+
 /* Verifie la validité d'un nom de fichier! ne contient pas ``/\:*"<>|`` ou n'est pas vide 
 renvoie 0 si c'est bon sinon 1*/
 int check_name(const char *filename) {
@@ -29,7 +63,7 @@ int check_name(const char *filename) {
     if (strcspn(filename, prob) == size) { // strcspn donne la longeur avant de renconter un character du deuxieme arg 
         return 0;                          // donc si = -> pas de char en commun
     }
-    printf("Error: Invalid file name (can't contain: /\\:*\"<>|)\n");
+    printf("Error: Invalid file name (can't contain: /\\:*\"<>|).\n");
     return 1;
 }
 
@@ -200,7 +234,7 @@ int main() {
     file = path_join(path, "default.json");
     params = path_join(path, "params.json");
 
-    printf("path : %s\nfile : %a\nparams : %f\n", path, file, params);
+    printf("path : %s\nfile : %s\nparams : %s\n", path, file, params);
 
     #ifdef _WIN32 
         _mkdir(path);
@@ -281,7 +315,7 @@ int main() {
         cJSON_Delete(json);
     }
 
-    char filename[] = path_filename(file);
+    char *filename = path_filename(file);
     size_t len = strlen(filename);
     if (len >= 5) {
         filename[len - 5] = '\0';

@@ -254,7 +254,7 @@ void delete_file(const char *name) {
 
         int rmv = remove(selected_path);
         if (rmv) {
-            printf("Error: Deletion failed (check your permissions)\n");
+            printf("Error: Deletion failed (check your permissions).\n");
             free(selected_path);
             free(selected);
             return;
@@ -268,12 +268,12 @@ void delete_file(const char *name) {
 
     int rmv = remove(selected_path);
     if (rmv) {
-        printf("Error: Deletion failed (check your permissions)\n");
+        printf("Error: Deletion failed, file might not exists (check your permissions).\n");
         free(selected_path);
         free(selected);
         return;
     }
-    printf("Inventory file deleted");
+    printf("Inventory file deleted.\n");
     free(selected_path);
     free(selected);
 }
@@ -341,8 +341,94 @@ void run(int running) {
             printf("Saving and exiting the programm.");
             update(file);
 
-        } else if (strcmp(user_input, "delete") == 0){
+        } else if (strcmp(user_input, "delete") == 0) {
+            int count;
+
+            char **files = path_listdir(path, &count);
+
+            if (files) {
+
+                if (count < 2) {
+                    printf("Error: No file can currently be deleted (Not enough files available).\n");
+                    continue;
+                }
+                int names = 0;
+
+                for (int i = 0; i < count; i++) {
+                    char *name = files[i];
+                    size_t len = strlen(name);
+                    if ((len >= 5 && strcmp(name + len - 5, ".json") == 0) && (strcmp(name, "params.json") != 0 || strcmp(name, "default.json") != 0)) {
+                        printf("%s  ", name[len - 5]);
+                        names++;
+                        if (names == 4) {
+                            printf("\n");
+                            names = 0;
+                        }
+                    }
+                }
+            }
             
+            for (int i = 0; i < count; i++) {
+                free(files[i]);
+            }   // Libération de la mémoire
+
+            free(files);
+
+            char *name;
+            printf("\n>Enter the name of the inventory file to delete: ");
+            fgets(name, sizeof(name), stdin);
+            delete_file(name);
+
+        } else if (user_input[0] == "d" && user_input[1] == " ") {
+            user_input[0] = '\0';
+            user_input[0] = '\0';
+
+            if (strcmp(user_input, "all") == 0 || strcmp(user_input, "a") == 0) {
+                char *confirm;
+                printf("are you sure you want to delete every app file? This action cannot be undone. (y/n)\n");
+                fgets(confirm, sizeof(confirm), stdin);
+                confirm = lower(confirm);
+
+                if (confirm != "y") {
+                    free(confirm);
+                    printf("Deletion canceled.\n");
+                    continue;
+                }
+                
+                confirm = NULL;
+                printf("are you really sure ? This action cannot be undone. (y/n)\n");
+                fgets(confirm, sizeof(confirm), stdin);
+                confirm = lower(confirm);
+
+                if (confirm != "y") {
+                    free(confirm);
+                    printf("Deletion canceled.\n");
+                    continue;
+                }
+                free(confirm);
+
+                int count;
+
+                char **files = path_listdir(path, &count);
+
+                if (files) {
+                    for (int i = 0; i < count; i++) {
+                        int rmv = remove(files[i]);
+                        if (rmv) {
+                            printf("Error: Deletion of %s failed (check your permissions)", files[i]);
+                        }
+                    }
+                    printf(">Files deleted, exiting the app...");
+                    running = 0;
+                }
+                
+                for (int i = 0; i < count; i++) {
+                    free(files[i]);
+                }   // Libération de la mémoire
+
+                free(files);
+
+            } else if (strlen(user_input) > 0) delete_file(user_input);
 
         } else if (strcmp(user_input, "switch") == 0) {
             int count;

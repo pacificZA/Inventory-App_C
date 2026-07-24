@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include "lib/cJSON.h"
 #include "lib/path.h"
 #ifdef _WIN32
@@ -18,6 +19,69 @@ char *file = NULL;
 char *params = NULL;
 cJSON *data = NULL;
 
+// ajoute si besoin .json a la fin d'une chaine
+char* jsonify(const char *name) {
+    size_t len = strlen(name);
+
+    if(len >= 5 && strcmp(name + len - 5, ".json") == 0) {
+        return name;
+    } 
+
+    char *selected = malloc(len + 6);
+    sprintf(selected, "%s.json", name);
+    return selected;
+}
+
+// update le contenue du fichier choisie avec la valeur actuelle de ``data``
+void update(char *filename) {
+    char *json_str = cJSON_Print(data);
+    if (!json_str) return;
+
+    FILE *f = fopen(filename, "w");
+    if (!f) {
+        filename[strlen(filename - 5)] = '\0';
+        printf("Error: Couldn't save %s\n", filename);  // Si n'a pas pu ouvrir le fichier
+        cJSON_free(json_str);
+        return;
+    }
+
+    fputs(json_str, f);
+
+    fclose(f);
+    cJSON_free(json_str);   //libere mémoire
+}
+
+// transforme en minuscule une chaine
+char* lower(char *str) {
+    size_t len = strlen(str);
+    char *str1 = calloc(len + 1, sizeof(char));
+
+    for (size_t i = 0; i < len; i++) {
+        str1[i] = tolower((unsigned char)str[i]);
+    }
+    return str1;
+}
+
+// trouve un item par son nom
+cJSON* find_item(const char *name) {
+    if (!name) return
+
+    name = lower(name);
+
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, data) {
+        cJSON *found = cJSON_GetObjectItem(item, "name");
+        if (cJSON_IsString(found)) {
+            if (strcmp(name, found) == 0) {
+                free(name);
+                return item;
+            }
+        }
+    }
+    free(name);
+    return NULL;
+}
+
 // ajoute un item a l'inventaire actuel
 void add_item(char *item, char *tags, float count) {
 
@@ -25,21 +89,19 @@ void add_item(char *item, char *tags, float count) {
         printf("Error: Invalid item data. Please provide 3 parameters: name,tags,quantity).\n");
         return;
     }
+    item = lower(item);
     
     int nb = cJSON_GetArraySize(data);
 
-    for (int i=0; i < nb; i++) {
-        cJSON *obj = cJSON_GetArrayItem(data, i);
-        cJSON *name = cJSON_GetObjectItem(obj, "name");
-
-        if (strcmp(name->valuestring, item) == 0) {
-            printf("Error: Item that name already exists.\n");
-            return;
-        }
+    if (find_item(item)) {
+        printf("Error: Item that name already exists.\n");
+        free(item);
+        return;
     }
 
     if (count < 0) {
         printf("Error: Invalid quantity: %g. Can't put negative quantity.\n", count);
+        free(item);
         return;
     }
 
@@ -50,20 +112,23 @@ void add_item(char *item, char *tags, float count) {
     cJSON_AddItemToArray(data, obj);
 
     update(file);
+    free(item);
 }
 
 /* Verifie la validité d'un nom de fichier! ne contient pas ``/\:*"<>|`` ou n'est pas vide 
 renvoie 0 si c'est bon sinon 1*/
 int check_name(const char *filename) {
-    if (!filename || filename[0] == '\0') return 1;
-
+    if (!filename || filename[0] == '\0') {
+        printf("Error: File name must be at least one character long");
+        return 1;
+    }
     const char prob[] = "/\\:*\"<>|";
     size_t size = strlen(filename);
 
     if (strcspn(filename, prob) == size) { // strcspn donne la longeur avant de renconter un character du deuxieme arg 
         return 0;                          // donc si = -> pas de char en commun
     }
-    printf("Error: Invalid file name (can't contain: /\\:*\"<>|).\n");
+    printf("Error: Invalid file name, can't contain: /\\:*\"<>|.\n");
     return 1;
 }
 
@@ -71,15 +136,7 @@ int check_name(const char *filename) {
 void switch_file(const char *name) {
     if (check_name(name) == 1) return;
 
-    char *selected;
-    size_t len = strlen(name);
-
-    if (len >= 5 && strcmp(name + len - 5, ".json") == 0) {
-        selected = strdup(name);    // Si le fichier se termine en .json -> fait rien
-    } else {
-        selected = malloc(len + 6);
-        sprintf(selected, "%s.json", name); // Sinon -> l'ajoute
-    }
+    char *selected = jsonify(name);
 
     if (strcmp(selected, "params.json") == 0) {
         printf("Error: can't switch to the parameter file\n"); // Si le nom est params.json -> refuse
@@ -109,7 +166,7 @@ void switch_file(const char *name) {
     }
 
     char buffer[1024];
-    len = fread(buffer, 1, sizeof(buffer)-1, f);    //creer un buffer qui stock l'interieur du fichier avant de le parser
+    size_t len = fread(buffer, 1, sizeof(buffer)-1, f);    //creer un buffer qui stock l'interieur du fichier avant de le parser
     buffer[len] = '\0';
 
     cJSON_Delete(data);
@@ -162,28 +219,112 @@ void switch_file(const char *name) {
 
 }
 
-// update le contenue du fichier choisie avec la valeur actuelle de ``data``
-void update(char *filename) {
-    char *json_str = cJSON_Print(data);
-    if (!json_str) return;
+// supprime le fichier selectionné et switch si c'est l'actuel
+void delete_file(const char *name) {
+    if (check_name(name) == 1) return;
 
-    FILE *f = fopen(filename, "w");
-    if (!f) {
-        filename[strlen(filename - 5)] = '\0';
-        printf("Error: Couldn't save %s\n", filename);  // Si n'a pas pu ouvrir le fichier
-        cJSON_free(json_str);
+    char* selected = jsonify(name);
+    char* selected_path = path_join(path, selected);
+
+    printf("are you sure you want to delete the inventory file? This action cannot be undone. (y/n)\n");
+
+    char *confirm;
+    fgets(confirm, sizeof(confirm), stdin);
+    confirm [strcspn(confirm, "\n")] = '\0';
+    confirm = lower(confirm);
+
+    if (strcmp(confirm, "y") != 0) {
+        printf("Deletion cancelled.\n");
+        free(selected_path);
+        free(selected);
+        free(confirm);
+        return;
+    }
+    free(confirm);
+
+    if (strcmp(selected, "default.json") == 0 || strcmp(selected, "params.json" == 0)) {
+        printf("Error: Can't delete the default/params file; try another one.\n");
+        free(selected);
+        free(selected_path);
         return;
     }
 
-    fputs(json_str, f);
+    if (strcmp(selected_path, file) == 0) {
+        switch_file("default");
 
-    fclose(f);
-    cJSON_free(json_str);   //libere mémoire
+        int rmv = remove(selected_path);
+        if (rmv) {
+            printf("Error: Deletion failed (check your permissions)\n");
+            free(selected_path);
+            free(selected);
+            return;
+        }
+
+        printf("Current inventory file deleted. Switching to default.\n");
+        free(selected_path);
+        free(selected);
+        return;
+    }
+
+    int rmv = remove(selected_path);
+    if (rmv) {
+        printf("Error: Deletion failed (check your permissions)\n");
+        free(selected_path);
+        free(selected);
+        return;
+    }
+    printf("Inventory file deleted");
+    free(selected_path);
+    free(selected);
+}
+
+// creer un fichier json avec le nom donné
+void create_file(const char *name) {
+    if (check_name(name) == 1) return;
+
+    char *selected = jsonify(name);
+    char *low_name = lower(selected);
+
+    if (strcmp(low_name, "all.json") == 0 || strcmp(low_name, "a.json") == 0) {
+        printf("Error: Can't name an inventory file %s.\n", name);
+        free(selected);
+        free(low_name);
+        return;
+    }
+    free(low_name);
+
+    char *file_path = path_join(path, selected);
+    
+    FILE *f = fopen(file_path, "r");
+    if (f) {
+        printf("Error: File that name already exists.\n");
+        free(selected);
+        fclose(f);
+        return;
+    }
+
+    printf("Creating new inventory file %s...\n", name);
+
+    cJSON *contain = cJSON_CreateArray();
+    char *text = cJSON_Print(contain);
+
+    f = fopen(file_path, "w");
+    if (f) {
+        fputs(text, f);
+        fclose(f);
+        printf("File succesfully created.\n");
+    } else {
+        printf("Error: The file couldn't be created.\n");
+    }
+    cJSON_free(text);
+    cJSON_Delete(contain);
+
+    free(selected);
 }
 
 // gere la partie input user et appelle les fonction correspondante
 void run(int running) {
-    char user_input[100];
+    char *user_input;
 
     while (running > 0) {
         printf("> ");
@@ -200,6 +341,9 @@ void run(int running) {
             printf("Saving and exiting the programm.");
             update(file);
 
+        } else if (strcmp(user_input, "delete") == 0){
+            
+
         } else if (strcmp(user_input, "switch") == 0) {
             int count;
 
@@ -210,7 +354,6 @@ void run(int running) {
                     printf("%s\n", files[i]);
                 }
             }
-
             
             for (int i = 0; i < count; i++) {
                 free(files[i]);
@@ -272,7 +415,7 @@ int main() {
     }
 
     if (!data) {
-        printf("Error: invalid Inventory file\n");
+        printf("Error: invalid Inventory file, starting with an empty one.\n");
         data = cJSON_CreateArray();
     }
 

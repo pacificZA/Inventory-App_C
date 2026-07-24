@@ -1,5 +1,7 @@
 # Inventory-app
 a basic console app to manage inventories 
+already existed in python but decied to remake it in C to learn how to code in this language,
+besides that it's the closest possible from the python version: https://github.com/pacificZA/Inventory-app
 
 ## Command List
 the action list is :

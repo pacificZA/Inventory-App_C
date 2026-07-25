@@ -330,7 +330,7 @@ void run(int running) {
         printf("> ");
         fgets(user_input, sizeof(user_input), stdin);
         
-        user_input [strcspn(user_input, "\n")] = '\0';
+        user_input[strcspn(user_input, "\n")] = '\0'; // rempalce le dernier character (\n) par \0
 
         if (strlen(user_input) <= 0) {
             continue;
@@ -380,10 +380,9 @@ void run(int running) {
             delete_file(name);
 
         } else if (user_input[0] == "d" && user_input[1] == " ") {
-            user_input[0] = '\0';
-            user_input[0] = '\0';
+            char *input = user_input + 2;
 
-            if (strcmp(user_input, "all") == 0 || strcmp(user_input, "a") == 0) {
+            if (strcmp(input, "all") == 0 || strcmp(input, "a") == 0) {
                 char *confirm;
                 printf("are you sure you want to delete every app file? This action cannot be undone. (y/n)\n");
                 fgets(confirm, sizeof(confirm), stdin);
@@ -428,7 +427,62 @@ void run(int running) {
 
                 free(files);
 
-            } else if (strlen(user_input) > 0) delete_file(user_input);
+            } else if (strlen(input) > 0) delete_file(input);
+
+        } else if (user_input[0] == "+" || user_input[0] == "-") {
+            char *item;
+            float value = strtof(user_input, &item); // str to f (float) pas str of ou quoi
+
+            if (item == user_input || !isspace((unsigned char)*item)) {
+                // Aucun nombre n'a été lu / format pas bon +1item ou +1 item item
+                printf("Error: Invalid command format. Please use %s<number> <item_name>.\n", user_input[0]);
+                continue;
+            }
+
+            while (isspace((unsigned char)*item)) {
+                item++; // enleve les espaces avant le nom de l'item
+            }
+
+            cJSON *obj = find_item(item);
+            if (!obj) {
+                printf("Error: item '%s' not found.\n", item);
+                continue;
+            }
+
+            cJSON *quantity = cJSON_GetObjectItem(obj, "quantity");
+            if (cJSON_IsNumber(quantity)) {
+                double new_quantity = quantity->valuedouble;
+                new_quantity += value;
+                if (new_quantity >= 0) {
+                    cJSON_SetNumberValue(obj, new_quantity);
+                    update(file);
+                    printf("Item '%s' updated. New quantity: %f.\n", item, new_quantity);
+                } else {
+                    printf("Error: Quantity cannot be negative.\n");
+                }
+            }
+
+        } else if (strcmp(user_input, "new") == 0) {
+            printf(">Enter the item name: ");
+            char *name;
+            fgets(name, sizeof(name), stdin);
+            
+            if (find_item(name)) {
+                printf("Item that name already exists.\n");
+                continue;
+            }
+
+            char *tags;
+            printf("\n>Enter the item tags (slash separated): ");
+            fgets(tags, sizeof(tags), stdin);
+
+            float quantity;
+            printf("\n>Enter the item quantity: ");
+            fgets(tags, sizeof(tags), stdin);
+
+            printf("\n");
+            add_item(name, tags, quantity);
+            
 
         } else if (strcmp(user_input, "switch") == 0) {
             int count;

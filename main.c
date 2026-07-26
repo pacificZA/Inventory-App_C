@@ -71,15 +71,35 @@ cJSON* find_item(const char *name) {
     cJSON *item = NULL;
     cJSON_ArrayForEach(item, data) {
         cJSON *found = cJSON_GetObjectItem(item, "name");
-        if (cJSON_IsString(found)) {
-            if (strcmp(name, found) == 0) {
-                free(name);
-                return item;
-            }
+        if (cJSON_IsString(found) && strcmp(name, found) == 0) {
+            free(name);
+            return item;
         }
     }
     free(name);
     return NULL;
+}
+
+// cherche si dans tags il y a search
+int has_tag(const char *tags, const char *search) {
+    char *start = tags;
+    char *end;
+    size_t search_len = strlen(search);
+
+    while (*start) {
+        end = strchr(start, '/');
+
+        if (!end) end = start + strlen(start);
+
+        size_t len = end - start;
+
+        if (len == search_len && strncmp(start, search, len) == 0) return 1;
+
+        if (*end == '\0') break;
+        start = end + 1;
+    }
+
+    return 0;
 }
 
 // ajoute un item a l'inventaire actuel
@@ -90,13 +110,32 @@ void add_item(char *item, char *tags, float count) {
         return;
     }
     item = lower(item);
-    
-    int nb = cJSON_GetArraySize(data);
 
     if (find_item(item)) {
         printf("Error: Item that name already exists.\n");
         free(item);
         return;
+    }
+
+    const char *reserved[] = {
+    "quit", "q",
+    "delete", "d",
+    "+", "-",
+    "new", "n",
+    "edit", "e",
+    "remove", "r",
+    "help", "h",
+    "all", "a",
+    "switch", "s",
+    "current", "c",
+    "file", "f"
+    };
+
+    for (size_t i = 0; i < sizeof(reserved) / sizeof(reserved[0]); i++) {
+        if (strcmp(item, reserved[i]) == 0) {
+            printf("Error: Can't name an item a command name (use help to see).\n");
+            return;
+        }
     }
 
     if (count < 0) {
@@ -143,8 +182,6 @@ void switch_file(const char *name) {
         free(selected);
         return;
     }
-
-    update(file);
 
     char *full_path = path_join(path, selected);
 
@@ -210,6 +247,7 @@ void switch_file(const char *name) {
     char *param_str = cJSON_Print(param);   // formate le texte et mets dans params.json
     fputs(param_str, fp);
     file = full_path;
+    update(file);
 
     cJSON_free(param_str);
     fclose(fp);
@@ -283,15 +321,6 @@ void create_file(const char *name) {
     if (check_name(name) == 1) return;
 
     char *selected = jsonify(name);
-    char *low_name = lower(selected);
-
-    if (strcmp(low_name, "all.json") == 0 || strcmp(low_name, "a.json") == 0) {
-        printf("Error: Can't name an inventory file %s.\n", name);
-        free(selected);
-        free(low_name);
-        return;
-    }
-    free(low_name);
 
     char *file_path = path_join(path, selected);
     
@@ -331,6 +360,7 @@ void run(int running) {
         fgets(user_input, sizeof(user_input), stdin);
         
         user_input[strcspn(user_input, "\n")] = '\0'; // rempalce le dernier character (\n) par \0
+        printf("\n");
 
         if (strlen(user_input) <= 0) {
             continue;
@@ -378,6 +408,7 @@ void run(int running) {
             printf("\n>Enter the name of the inventory file to delete: ");
             fgets(name, sizeof(name), stdin);
             name[strcspn(name, "\n")] = '\0';
+            print("\n");
             delete_file(name);
 
         } else if (user_input[0] == "d" && user_input[1] == " ") {
@@ -390,7 +421,7 @@ void run(int running) {
                 confirm[strcspn(confirm, "\n")] = '\0';
                 *confirm = lower(confirm);
 
-                if (confirm != "y") {
+                if (confirm[0] != "y") {
                     free(confirm);
                     printf("Deletion canceled.\n");
                     continue;
@@ -401,7 +432,7 @@ void run(int running) {
                 fgets(confirm, sizeof(confirm), stdin);
                 *confirm = lower(confirm);
 
-                if (confirm != "y") {
+                if (confirm[0] != "y") {
                     free(confirm);
                     printf("Deletion canceled.\n");
                     continue;
@@ -548,12 +579,144 @@ void run(int running) {
             fgets(new_tags, sizeof(new_tags), stdin);
             new_tags[strcspn(new_tags, "\n")] = '\0';
 
+            printf("\n");
+
             char *tags = lower(new_tags);
 
             cJSON_ReplaceItemInObject(obj, "tags", cJSON_CreateString(tags));
             free(tags);
 
             update(file);
+
+        } else if (user_input[0] == "e" && user_input[1] == " ") {
+            char *command = user_input + 2;
+
+            while (isspace((unsigned char)*command)) command ++; // retire les espace eventuel avant
+
+            char *end = command + strlen(command) - 1;
+            while (end > command && isspace((unsigned char)*end)) *end-- = '\0';
+
+            char *args[2];
+            int count = 0;
+            char *token = strtok(command, ",");
+
+            while (token && count < 2) {
+                while (isspace((unsigned char)*token)) token++;
+
+                char *end = token + strlen(token) - 1;
+                while (end > token && isspace((unsigned char)*end)) *end-- = '\0';
+
+                args[count++] = token;
+
+                token = strtok(NULL, ",");
+            }
+
+            if (count != 2 || token != NULL) {
+                printf("Error: Invalid command format. Please use the format: n <item_name>,<tags>.\n");
+                continue;
+            }
+
+            cJSON *obj = find_item(args[0]);
+
+            if (!obj) {
+                printf("Error: Item '%s' not found.\n", args[0]);
+                continue;
+            }
+
+            char *tags = lower(args[1]);
+
+            cJSON_ReplaceItemInObject(obj, "tags", cJSON_CreateString(tags));
+            free(tags),
+
+            update(file);
+
+        } else if (strcmp(user_input, "remove") == 0) {
+            char name[256];
+            printf(">Enter the item name to remove: ");
+            fgets(name, sizeof(name), stdin);
+
+            name[strcspn(name, "\n")] = '\0';
+            printf("\n");
+
+            cJSON *obj = find_item(name);
+
+            if (!obj) {
+                printf("Error: Item '%s' not found.\n", name);
+                continue;
+            }
+
+            cJSON *item = NULL;
+            int count = 0;
+            cJSON_ArrayForEach(item, data) {
+                cJSON *found = cJSON_GetObjectItem(item, "name");
+                if (cJSON_IsString(found) && found == cJSON_GetObjectItem(obj, "name")) {
+                    break;
+                }
+                count++;
+            }
+
+            cJSON_DeleteItemFromArray(data, count);
+
+        } else if (user_input[0] == "r" && user_input[1] == " ") {
+            char *command = user_input + 2;
+
+            while (isspace((unsigned char)*command)) command ++; // retire les espace eventuel avant
+
+            char *end = command + strlen(command) - 1;
+            while (end > command && isspace((unsigned char)*end)) *end-- = '\0';
+
+            if (!command) {
+                printf("Error: Invalid command format. Please use the format: r <item_name>.\n");
+                continue;
+            }
+
+            cJSON *obj = find_item(command);
+
+            if (!obj) {
+                printf("Error: Item '%s' not found.\n", command);
+                continue;
+            }
+
+            cJSON *item = NULL;
+            int count = 0;
+            cJSON_ArrayForEach(item, data) {
+                cJSON *found = cJSON_GetObjectItem(item, "name");
+                if (cJSON_IsString(found) && found == cJSON_GetObjectItem(obj, "name")) {
+                    break;
+                }
+                count++;
+            }
+
+            cJSON_DeleteItemFromArray(data, count);
+
+        } else if (user_input[0] == "h" || strcmp(user_input, "help") == 0) {
+            printf("Help:\n");
+            printf("  help - Show this help message *\n");
+            printf("  new - Add a new item *\n");
+            printf("  edit - Edit an existing item tags *\n");
+            printf("  remove - Remove an existing item *\n");
+            printf("  quit - Quit the program\n");
+            printf("  +<number> <item_name> - Increase the quantity of an item\n");
+            printf("  -<number> <item_name> - Decrease the quantity of an item\n");
+            printf("  <item_name/tags> - Search for an item by name or tag\n");
+            printf("  all - Show all items\n");
+            printf("  current - Show the current inventory file\n");
+            printf("  switch - Switch to another inventory file *\n");
+            printf("  file - Create a new inventory file *\n");
+            printf("  delete - Delete an inventory file (cannot be undone), the 'all' argument delete every app files *\n");
+            printf("  all command with an asterisk (*) can be used with the first letter only using a comma-separated list of values instead of interactive input, for example: n <item_name>, <tags>, <quantity>\n");
+
+
+        } else if (user_input[0] == "a" || strcmp(user_input, "all") == 0) {
+            cJSON *item = NULL;
+
+            cJSON_ArrayForEach(item, data) {
+                cJSON *name = cJSON_GetObjectItem(item, "name");
+                cJSON *tags = cJSON_GetObjectItem(item, "tags");
+                cJSON *quantity = cJSON_GetObjectItem(item, "quantity");
+
+                printf("Item: %s, Tags: %s, Quantity: %d\n", name->valuestring, tags->valuestring, quantity->valueint);
+            }
 
         } else if (strcmp(user_input, "switch") == 0) {
             int count;
@@ -581,6 +744,89 @@ void run(int running) {
                 free(files[i]);
             }   // Libération de la mémoire
             free(files);
+
+            char name[256];
+            printf(">Enter the name of the inventory file to switch to: ");
+
+            fgets(name, sizeof(name), stdin);
+            name[strcspn(name, "\n")] = '\0';
+            printf("\n");
+
+            switch_file(name);
+
+        } else if (user_input[0] = "s" && user_input[1] == " ") {
+            char *command = user_input + 2;
+
+            while (isspace((unsigned char)*command)) command ++; // retire les espace eventuel avant
+
+            char *end = command + strlen(command) - 1;
+            while (end > command && isspace((unsigned char)*end)) *end-- = '\0';
+
+            if (!command) {
+                printf("Error: Invalid command format. Please use the format: s <file_name>.\n");
+                continue;
+            }
+
+            switch_file(command);
+
+        } else if (user_input[0] == "c" || strcmp(user_input, "current") == 0) {
+            char *filename = path_filename(file);
+            size_t len = strlen(filename);
+
+            printf("Current inventory file: %s", filename[len - 5]);
+            
+        } else if (strcmp(user_input, "file") == 0) {
+            char name[256];
+            printf(">Enter the new file name: ");
+
+            fgets(name, sizeof(name), stdin);
+            name[strcspn(name, "\n")] = '\0';
+            printf("\n");
+
+            create_file(name);
+        } else if (user_input[0] == "f" && user_input[1] == " ") {
+            char *command = user_input + 2;
+
+            while (isspace((unsigned char)*command)) command ++; // retire les espace eventuel avant
+
+            char *end = command + strlen(command) - 1;
+            while (end > command && isspace((unsigned char)*end)) *end-- = '\0';
+
+            if (!command) {
+                printf("Error: Invalid command format. Please use the format: f <file_name>.\n");
+                continue;
+            }
+
+            create_file(command);
+        } else {
+            cJSON *item = find_item(user_input);
+
+            if (item) {
+                cJSON *name = cJSON_GetObjectItem(item, "name");
+                cJSON *tags = cJSON_GetObjectItem(item, "tags");
+                cJSON *quantity = cJSON_GetObjectItem(item, "quantity");
+
+                printf("Item: %s, Tags: %s, Quantity: %d\n", name->valuestring, tags->valuestring, quantity->valueint);
+                continue;
+            }
+
+            int count = 0;
+            char *tags = lower(user_input);
+
+            item = NULL;
+
+            cJSON_ArrayForEach(item, data) {
+                cJSON *name = cJSON_GetObjectItem(item, "name");
+                cJSON *tags = cJSON_GetObjectItem(item, "tags");
+                cJSON *quantity = cJSON_GetObjectItem(item, "quantity");
+
+                if (cJSON_IsString(tags) && cJSON_IsString(name) && cJSON_IsNumber(quantity)) {
+                    if (has_tag(tags->valuestring, user_input)) {
+                        printf("Item: %s, Tags: %s, Quantity: %d\n", name->valuestring, tags->valuestring, quantity->valueint);
+                        count++;
+                    }
+                }
+            }
         }
 
     }

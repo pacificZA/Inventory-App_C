@@ -324,7 +324,7 @@ void create_file(const char *name) {
 
 // gere la partie input user et appelle les fonction correspondante
 void run(int running) {
-    char *user_input;
+    char user_input[1024];
 
     while (running > 0) {
         printf("> ");
@@ -374,19 +374,21 @@ void run(int running) {
 
             free(files);
 
-            char *name;
+            char name[256];
             printf("\n>Enter the name of the inventory file to delete: ");
             fgets(name, sizeof(name), stdin);
+            name[strcspn(name, "\n")] = '\0';
             delete_file(name);
 
         } else if (user_input[0] == "d" && user_input[1] == " ") {
             char *input = user_input + 2;
 
             if (strcmp(input, "all") == 0 || strcmp(input, "a") == 0) {
-                char *confirm;
+                char confirm[256];
                 printf("are you sure you want to delete every app file? This action cannot be undone. (y/n)\n");
                 fgets(confirm, sizeof(confirm), stdin);
-                confirm = lower(confirm);
+                confirm[strcspn(confirm, "\n")] = '\0';
+                *confirm = lower(confirm);
 
                 if (confirm != "y") {
                     free(confirm);
@@ -394,10 +396,10 @@ void run(int running) {
                     continue;
                 }
                 
-                confirm = NULL;
+                confirm[256];
                 printf("are you really sure ? This action cannot be undone. (y/n)\n");
                 fgets(confirm, sizeof(confirm), stdin);
-                confirm = lower(confirm);
+                *confirm = lower(confirm);
 
                 if (confirm != "y") {
                     free(confirm);
@@ -464,8 +466,9 @@ void run(int running) {
 
         } else if (strcmp(user_input, "new") == 0) {
             printf(">Enter the item name: ");
-            char *name;
+            char name[256];
             fgets(name, sizeof(name), stdin);
+            name[strcspn(name, "\n")] = '\0';
             
             if (find_item(name)) {
                 printf("Item that name already exists.\n");
@@ -526,15 +529,51 @@ void run(int running) {
 
             add_item(args[0], args[1], quantity);
 
+        } else if (strcmp(user_input, "edit") == 0) {
+            char name[256];
+            char new_tags[256];
+
+            printf(">Enter the item name to edit: ");
+            fgets(name, sizeof(name), stdin);
+            name[strcspn(name, "\n")] = '\0';
+
+            cJSON *obj = find_item(name);
+
+            if (!obj) {
+                printf("Error: Item '%s' not found.\n", name);
+                continue;
+            }
+
+            printf(">Enter the new item tags (slash-separated): ");
+            fgets(new_tags, sizeof(new_tags), stdin);
+            new_tags[strcspn(new_tags, "\n")] = '\0';
+
+            char *tags = lower(new_tags);
+
+            cJSON_ReplaceItemInObject(obj, "tags", cJSON_CreateString(tags));
+            free(tags);
+
+            update(file);
+
         } else if (strcmp(user_input, "switch") == 0) {
             int count;
 
             char **files = path_listdir(path, &count);
 
             if (files) {
+                int names = 0;
+
                 for (int i = 0; i < count; i++) {
                     char *name = files[i];
-                    printf("%s  ", files[i]);
+                    size_t len = strlen(name);
+                    if ((len >= 5 && strcmp(name + len - 5, ".json") == 0) && (strcmp(name, "params.json") != 0 || strcmp(name, "default.json") != 0)) {
+                        printf("%s  ", name[len - 5]);
+                        names++;
+                        if (names == 4) {
+                            printf("\n");
+                            names = 0;
+                        }
+                    }
                 }
             }
             

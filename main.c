@@ -827,6 +827,10 @@ void run(int running) {
                     }
                 }
             }
+            if (count == 0) {
+                printf("Error: Item or tag '%s' not found.\n", user_input);
+            }
+
         }
 
     }

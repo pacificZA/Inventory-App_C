@@ -86,7 +86,7 @@ cJSON* find_item(const char *name) {
 void add_item(char *item, char *tags, float count) {
 
     if (!item) {
-        printf("Error: Invalid item data. Please provide 3 parameters: name,tags,quantity).\n");
+        printf("Error: Invalid item data. Please provide 3 parameters: name, tags, quantity).\n");
         return;
     }
     item = lower(item);
@@ -484,6 +484,48 @@ void run(int running) {
             add_item(name, tags, quantity);
             
 
+        } else if (user_input[0] == "n" && user_input[1] == " ") {
+            char *command = user_input + 2; // retire les 2 premiers character "n "
+
+            while (isspace((unsigned char)*command)) command ++; // retire les espace eventuel avant
+
+            // retire les espaces a la fin
+            char *end = command + strlen(command) - 1;
+            while (end > command && isspace((unsigned char)*end)) *end-- = '\0';
+            
+            char *args[3];
+            int count = 0;
+
+            char *token = strtok(command, ",");
+
+            while (token && count < 3) {
+
+                // enleve les espaces autour
+                while (isspace((unsigned char)*token)) token++;
+
+                char *end = token + strlen(token) - 1;
+                while (end > token && isspace((unsigned char)*end)) *end-- = '\0';
+
+                args[count++] = token;
+
+                token = strtok(NULL, ",");
+            }
+
+            if (count != 3 || token != NULL) {
+                printf("Error: Invalid command format. Please use the format: n <item_name>,<tags>,<quantity>.\n");
+                continue;
+            }
+
+            char *end;
+            float quantity = strtof(args[2], &end);
+
+            if (*end != '\0') {
+                printf("Error: Invalid quantity.\n");
+                continue;
+            }
+
+            add_item(args[0], args[1], quantity);
+
         } else if (strcmp(user_input, "switch") == 0) {
             int count;
 
@@ -491,14 +533,14 @@ void run(int running) {
 
             if (files) {
                 for (int i = 0; i < count; i++) {
-                    printf("%s\n", files[i]);
+                    char *name = files[i];
+                    printf("%s  ", files[i]);
                 }
             }
             
             for (int i = 0; i < count; i++) {
                 free(files[i]);
             }   // Libération de la mémoire
-
             free(files);
         }
 

@@ -34,7 +34,7 @@ char* path_join(const char* base, const char* sub) {
 }
 
 //extrait le nom du fichier depuis le chemin 
-const char* path_filename(const char* path) {
+const char* path_filename(char* path) {
     if (!path) return NULL;
     const char* last_sep = strrchr(path, PATH_SEP);
 
@@ -61,14 +61,14 @@ void path_normalize(char* path) {
 }
 
 //return une "liste" des fichier/sous-dossier dans le dossier donné en argument
-int path_listdir(const char *path, int *count) {
-    if (!path) return;
+char** path_listdir(const char *path, int *count) {
+    if (!path) return NULL;
 
     DIR *dir = opendir(path);
 
     if (!dir) {
         perror("opendir");
-        return 1;
+        return NULL;
     }
 
     char **files = NULL;
